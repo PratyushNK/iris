@@ -5,12 +5,6 @@ from typing import Protocol, Type, TypeVar, runtime_checkable
 from pydantic import BaseModel, Field
 
 
-class PlannedTask(BaseModel):
-    task: str
-    section_heading: str
-    rationale: str | None = None
-
-
 class SectionContentSpec(BaseModel):
     heading: str
     paragraphs: list[str] = Field(default_factory=list)
@@ -23,7 +17,8 @@ class PlanSpec(BaseModel):
     audience: str
     tone: str
     assumptions: list[str] = Field(default_factory=list)
-    tasks: list[PlannedTask] = Field(default_factory=list)
+    tasks: list[str] = Field(default_factory=list)
+    # Each task string: "Section Heading: task description"
 
 
 class ResponseSpec(BaseModel):
@@ -34,7 +29,8 @@ class ResponseSpec(BaseModel):
 class ReflectionSpec(BaseModel):
     overall_assessment: str
     reflection_notes: list[str] = Field(default_factory=list)
-    sections: list[SectionContentSpec] = Field(default_factory=list)
+    sections: list[str] = Field(default_factory=list)
+    # Each section string: heading on first line, then paragraphs and bullets (starting with "- ") on following lines
 
 
 class LLMConfig(BaseModel):
@@ -127,85 +123,43 @@ def _derive_title(prompt: str, document_type: str) -> str:
     return headline[:1].upper() + headline[1:]
 
 
-def _section_tasks(prompt: str, document_type: str) -> list[PlannedTask]:
+def _section_tasks(prompt: str, document_type: str) -> list[str]:
     lowered = prompt.lower()
     tasks = [
-        PlannedTask(
-            task="Write an executive summary that states the purpose, key outcomes, and recommended next steps.",
-            section_heading="Executive Summary",
-        ),
-        PlannedTask(
-            task="Describe the background, objectives, and scope of the deliverable based on the user request.",
-            section_heading="Background and Objectives",
-        ),
-        PlannedTask(
-            task="Provide the main body content with structured recommendations, requirements, or plan details.",
-            section_heading="Main Content",
-        ),
-        PlannedTask(
-            task="Summarize conclusions, ownership, and immediate follow-up actions.",
-            section_heading="Conclusion and Next Steps",
-        ),
+        "Executive Summary: Write an executive summary that states the purpose, key outcomes, and recommended next steps.",
+        "Background and Objectives: Describe the background, objectives, and scope of the deliverable based on the user request.",
+        "Main Content: Provide the main body content with structured recommendations, requirements, or plan details.",
+        "Conclusion and Next Steps: Summarize conclusions, ownership, and immediate follow-up actions.",
     ]
 
     if any(keyword in lowered for keyword in ("meeting", "minutes")):
         tasks = [
-            PlannedTask(
-                task="Capture meeting purpose, date context, attendees, and facilitator.",
-                section_heading="Meeting Details",
-            ),
-            PlannedTask(
-                task="Summarize the key discussion points and decisions made.",
-                section_heading="Discussion Summary",
-            ),
-            PlannedTask(
-                task="List action items with owners and due dates.",
-                section_heading="Action Items",
-            ),
+            "Meeting Details: Capture meeting purpose, date context, attendees, and facilitator.",
+            "Discussion Summary: Summarize the key discussion points and decisions made.",
+            "Action Items: List action items with owners and due dates.",
         ]
     elif any(keyword in lowered for keyword in ("timeline", "schedule", "launch", "implementation", "plan", "roadmap")):
         tasks.insert(
             2,
-            PlannedTask(
-                task="Lay out phases, milestones, and a realistic timeline with dependencies.",
-                section_heading="Timeline and Milestones",
-            ),
+            "Timeline and Milestones: Lay out phases, milestones, and a realistic timeline with dependencies.",
         )
     elif any(keyword in lowered for keyword in ("sop", "standard operating procedure", "procedure")):
         tasks = [
-            PlannedTask(
-                task="State the procedure purpose, scope, and responsible roles.",
-                section_heading="Purpose and Scope",
-            ),
-            PlannedTask(
-                task="Document prerequisites, inputs, and required tools or systems.",
-                section_heading="Prerequisites",
-            ),
-            PlannedTask(
-                task="Provide numbered step-by-step instructions for execution.",
-                section_heading="Procedure Steps",
-            ),
-            PlannedTask(
-                task="List quality checks, exceptions, and escalation paths.",
-                section_heading="Quality and Escalation",
-            ),
+            "Purpose and Scope: State the procedure purpose, scope, and responsible roles.",
+            "Prerequisites: Document prerequisites, inputs, and required tools or systems.",
+            "Procedure Steps: Provide numbered step-by-step instructions for execution.",
+            "Quality and Escalation: List quality checks, exceptions, and escalation paths.",
         ]
 
     if any(keyword in lowered for keyword in ("compare", "evaluate", "recommend", "choose", "tradeoff")):
         tasks.append(
-            PlannedTask(
-                task="Compare options, explain tradeoffs, and provide a clear recommendation.",
-                section_heading="Analysis and Recommendation",
-            )
+            "Analysis and Recommendation: Compare options, explain tradeoffs, and provide a clear recommendation.",
         )
 
     if any(keyword in lowered for keyword in ("timeline", "schedule", "launch", "implementation", "risk")):
-        if not any(task.section_heading == "Timeline and Milestones" for task in tasks):
+        if not any(task.startswith("Timeline and Milestones:") for task in tasks):
             tasks.append(
-                PlannedTask(
-                    task="Identify execution risks, mitigations, and open dependencies.",
-                    section_heading="Risks and Mitigations",
-                )
+                "Risks and Mitigations: Identify execution risks, mitigations, and open dependencies.",
             )
 
     return tasks
@@ -256,25 +210,17 @@ def _build_plan(prompt: str) -> PlanSpec:
 
 
 def _mock_reflection(prompt: str) -> ReflectionSpec:
-    sections: list[SectionContentSpec] = []
+    sections: list[str] = []
     notes: list[str] = []
     for line in prompt.splitlines():
         if line.startswith("Section: "):
             heading = line.split(":", 1)[1].strip()
             sections.append(
-                SectionContentSpec(
-                    heading=heading,
-                    paragraphs=[f"Revised content for {heading} after self-check review."],
-                    bullets=["Clarified scope and actionable next steps"],
-                )
+                f"{heading}\nRevised content for {heading} after self-check review.\n- Clarified scope and actionable next steps"
             )
     if not sections:
         sections.append(
-            SectionContentSpec(
-                heading="Document Content",
-                paragraphs=["Revised content after self-check review."],
-                bullets=["Improved clarity and alignment to the user request"],
-            )
+            "Document Content\nRevised content after self-check review.\n- Improved clarity and alignment to the user request"
         )
     notes = [
         "Verified each section addresses the original user request.",

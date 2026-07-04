@@ -65,11 +65,11 @@ class IrisAgent:
             or [
                 f"Planned {len(tasks)} section task(s)",
                 "Generated section content through worker agents",
-                # "Reviewed and revised the draft through reflection self-check",
+                "Reviewed and revised the draft through reflection self-check",
                 "Assembled markdown and exported a DOCX document",
             ],
-            # reflection_assessment=result.get("reflection_assessment", ""),
-            # reflection_notes=result.get("reflection_notes", []),
+            reflection_assessment=result.get("reflection_assessment", ""),
+            reflection_notes=result.get("reflection_notes", []),
         )
 def get_iris_agent() -> IrisAgent:
     return IrisAgent()

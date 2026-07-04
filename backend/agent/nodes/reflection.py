@@ -30,22 +30,35 @@ def _build_reflection_prompt(state: AgentState) -> str:
         "Draft sections to review:\n"
         f"{_format_sections_for_review(sections)}\n\n"
         "Review the draft against the user request and document brief. "
-        "Return reflection notes describing issues found and a fully revised sections list. "
-        "Each revised section must keep the same heading unless a merge or split is necessary. "
+        "Rewrite each section's FULL content with improvements — stronger prose, clearer structure, better examples. "
+        "Keep every substantive paragraph and bullet from the original; only add, rephrase, or reorganize. "
+        "Do NOT summarize, truncate, or replace content with review notes. "
+        "Each section string must contain the complete revised content, not a description of changes. "
         "Do not mention the agent, TODO list, or review process inside section content."
     )
 
 
-def _to_document_sections(reflection: ReflectionSpec) -> list[DocumentSection]:
-    return [
-        DocumentSection(
-            heading=section.heading,
-            paragraphs=section.paragraphs,
-            bullets=section.bullets,
-        )
-        for section in reflection.sections
-        if section.heading.strip()
-    ]
+def _to_document_sections(sections: list[str]) -> list[DocumentSection]:
+    result = []
+    for section_str in sections:
+        lines = section_str.strip().split("\n")
+        if not lines:
+            continue
+        heading = lines[0].strip()
+        if not heading:
+            continue
+        paragraphs = []
+        bullets = []
+        for line in lines[1:]:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("- "):
+                bullets.append(line[2:])
+            else:
+                paragraphs.append(line)
+        result.append(DocumentSection(heading=heading, paragraphs=paragraphs, bullets=bullets))
+    return result
 
 
 async def reflection(state: AgentState):
@@ -66,18 +79,32 @@ async def reflection(state: AgentState):
         prompt=_build_reflection_prompt(state),
         system_prompt=(
             "You are a reviewer agent performing reflection and self-check on a business document draft. "
-            "Identify gaps, weak sections, and misalignment with the request, then return improved sections."
+            "Rewrite every section with improvements — keep all original content, strengthen weak parts, "
+            "add missing detail, and tighten the prose.\n\n"
+            "CRITICAL: Each section string must contain the FULL rewritten content. "
+            "Do NOT return review notes, summaries, or placeholders. "
+            "Format: heading on the first line, then paragraphs and bullet points "
+            "(starting with '- ') on following lines."
         ),
-        llm_config=LLMConfig(model="llama-3.1-8b-instant", temperature=0.3, max_tokens=2500, max_retries=2),
+        llm_config=LLMConfig(model="llama-3.1-8b-instant", temperature=0.3, max_tokens=2500, max_retries=3),
     )
 
-    revised_sections = _to_document_sections(review)
+    revised_sections = _to_document_sections(review.sections)
     if not revised_sections:
         revised_sections = draft_sections
         reflection_notes = list(review.reflection_notes) + [
             "Reviewer returned no revised sections; kept the worker draft unchanged.",
         ]
     else:
+        originals_by_heading = {s.heading.lower(): s for s in draft_sections}
+        merged = []
+        for revised in revised_sections:
+            original = originals_by_heading.get(revised.heading.lower())
+            if original and (len(revised.paragraphs) + len(revised.bullets)) < (len(original.paragraphs) + len(original.bullets)):
+                merged.append(original)
+            else:
+                merged.append(revised)
+        revised_sections = merged
         reflection_notes = review.reflection_notes
 
     return {
