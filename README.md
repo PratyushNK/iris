@@ -40,7 +40,7 @@ User request
             │
             ▼
 ┌──────────────────┐
-│ generate_report │  Renders markdown → python-docx → base64 DOCX
+│ generate_report  │  Renders markdown → python-docx → base64 DOCX
 └─────────┬────────┘
           │
           ▼
@@ -53,26 +53,33 @@ User request
 ```
 
 **Key design points:**
+
 - The **orchestrator → worker loop** lets Iris handle any number of sections without modifying the graph.
 - The **reflection node** acts as a quality gate — it reviews the full draft and rewrites sections that need improvement.
 - Every node communicates through a shared `TypedDict` state, so nodes are decoupled and individually testable.
 
 ---
 
+
+
 ## Features
 
-| Feature | Details |
-|---|---|
-| **Autonomous planning** | LLM decomposes any business-document request into 3–6 section tasks with a title, tone, and audience |
-| **Multi-step execution** | LangGraph state machine routes tasks through the worker loop until all sections are complete |
+
+| Feature                     | Details                                                                                                                                                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Autonomous planning**     | LLM decomposes any business-document request into 3–6 section tasks with a title, tone, and audience                                                                                                       |
+| **Multi-step execution**    | LangGraph state machine routes tasks through the worker loop until all sections are complete                                                                                                               |
 | **Reflection / self-check** | A dedicated review node rewrites each section for clarity, structure, and completeness — a content-richness check ensures no content is lost (the **one engineering improvement** from the original brief) |
-| **DOCX generation** | python-docx produces properly formatted Word files with headings, paragraphs, bullet lists, and styled margins |
-| **Streaming progress** | SSE endpoint pushes real-time per-node updates so the UI can show live progress |
-| **Structured LLM output** | All LLM calls use Pydantic-validated JSON schemas with retry and error recovery |
-| **REST API** | `POST /agent` for blocking calls, `POST /agent/stream` for SSE, `POST /documents/save` and `GET /documents/{filename}` for document persistence |
-| **MockLLM fallback** | Offline mode for development without API credits — swap `GroqLLM` for `MockLLM` |
+| **DOCX generation**         | python-docx produces properly formatted Word files with headings, paragraphs, bullet lists, and styled margins                                                                                             |
+| **Streaming progress**      | SSE endpoint pushes real-time per-node updates so the UI can show live progress                                                                                                                            |
+| **Structured LLM output**   | All LLM calls use Pydantic-validated JSON schemas with retry and error recovery                                                                                                                            |
+| **REST API**                | `POST /agent` for blocking calls, `POST /agent/stream` for SSE, `POST /documents/save` and `GET /documents/{filename}` for document persistence                                                            |
+| **MockLLM fallback**        | Offline mode for development without API credits — swap `GroqLLM` for `MockLLM`                                                                                                                            |
+
 
 ---
+
+
 
 ## The reflection improvement
 
@@ -81,12 +88,15 @@ The assignment required **one real engineering improvement**. Iris implements **
 **Why this choice:** The llama-3.1-8b-instant model is small and fast but can produce thin or slightly off-topic content. A review pass catches weak sections, strengthens prose, and ensures consistency. A content-richness safety check compares each revised section against its original — if the revision is thinner (fewer paragraphs + bullets), the original is kept instead.
 
 **What it required:**
+
 - A flat `ReflectionSpec` schema that the 8B model can reliably produce (no nested Pydantic models — the model struggles with `$defs`)
 - A `_compact_schema()` helper that renders field names and types as human-readable text instead of JSON Schema keywords (prevents the model from echoing schema definitions back as data)
 - A `_split_section_text()` heuristic to handle the case where the LLM returns all sections concatenated in one string
 - Increased `max_retries` (2 → 3) for the reflection call, since it produces the longest output
 
 ---
+
+
 
 ## Project structure
 
@@ -127,13 +137,19 @@ iris/
 
 ---
 
+
+
 ## Quick start
+
+
 
 ### Prerequisites
 
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) package manager
 - A [Groq API key](https://console.groq.com) (free tier works)
+
+
 
 ### Setup
 
@@ -161,7 +177,11 @@ uv run streamlit run streamlit_app.py
 
 ---
 
+
+
 ## API reference
+
+
 
 ### `POST /agent`
 
@@ -186,6 +206,8 @@ Persist a generated DOCX to the server's `artifacts/` directory.
 Download a previously saved DOCX file.
 
 ---
+
+
 
 ## Example usage
 
@@ -215,35 +237,40 @@ for t in resp['tasks']:
 
 ---
 
+
+
 ## Engineering decisions and tradeoffs
 
-| Decision | Rationale |
-|---|---|
-| **LangGraph over raw LangChain / CrewAI** | LangGraph's `StateGraph` gives explicit control over the node-level execution flow and state passing. Makes the agent's decision-making visible and debuggable — every state mutation is traceable to one node. |
-| **Flat Pydantic schemas** | The 8B Groq model cannot reliably produce JSON with `$defs` (nested models). Solved by flattening all schemas — `PlanSpec.tasks` became `list[str]`, `ReflectionSpec.sections` became `list[str]`. Every field is a primitive or a list of primitives. |
+
+| Decision                                    | Rationale                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **LangGraph over raw LangChain / CrewAI**   | LangGraph's `StateGraph` gives explicit control over the node-level execution flow and state passing. Makes the agent's decision-making visible and debuggable — every state mutation is traceable to one node.                                                                                              |
+| **Flat Pydantic schemas**                   | The 8B Groq model cannot reliably produce JSON with `$defs` (nested models). Solved by flattening all schemas — `PlanSpec.tasks` became `list[str]`, `ReflectionSpec.sections` became `list[str]`. Every field is a primitive or a list of primitives.                                                       |
 | **Compact schema prompts over JSON Schema** | Feeding `model_json_schema()` into the prompt caused the model to echo schema keywords back as data (e.g. `"properties": {"title": ...}`). The fix: a `_compact_schema()` helper that renders each field as `"field_name": string (required)` — readable by the model and impossible to confuse with output. |
-| **Orchestrator-worker loop** | Instead of dynamic sub-graph spawning, a simple conditional edge loops between orchestrator and worker. This is less flexible but drastically simpler — no sub-graph state management, no parallel execution coordination. |
-| **MockLLM for offline dev** | A `MockLLM` class implements the same `LLM` protocol with canned responses. Enables frontend and API development without any LLM API calls or API keys. |
-| **Streaming via SSE** | Server-Sent Events over WebSocket: simpler infrastructure (no connection manager, no ping/pong), naturally maps to LangGraph's `astream(stream_mode="updates")`, and works with Streamlit's `st.write_stream()`. |
+| **Orchestrator-worker loop**                | Instead of dynamic sub-graph spawning, a simple conditional edge loops between orchestrator and worker. This is less flexible but drastically simpler — no sub-graph state management, no parallel execution coordination.                                                                                   |
+| **MockLLM for offline dev**                 | A `MockLLM` class implements the same `LLM` protocol with canned responses. Enables frontend and API development without any LLM API calls or API keys.                                                                                                                                                      |
+| **Streaming via SSE**                       | Server-Sent Events over WebSocket: simpler infrastructure (no connection manager, no ping/pong), naturally maps to LangGraph's `astream(stream_mode="updates")`, and works with Streamlit's `st.write_stream()`.                                                                                             |
+
 
 ---
+
+
 
 ## Stack
 
-| Layer | Technology |
-|---|---|
-| Language | Python 3.10 |
-| Agent framework | LangGraph 1.2+ |
-| LLM provider | Groq (llama-3.1-8b-instant) |
-| API | FastAPI + Uvicorn |
-| Document generation | python-docx |
-| Frontend (demo) | Streamlit |
-| Package manager | uv |
-| Validation | Pydantic 2 |
-| Configuration | pydantic-settings |
+
+| Layer               | Technology                  |
+| ------------------- | --------------------------- |
+| Language            | Python 3.10                 |
+| Agent framework     | LangGraph 1.2+              |
+| LLM provider        | Groq (llama-3.1-8b-instant) |
+| API                 | FastAPI + Uvicorn           |
+| Document generation | python-docx                 |
+| Frontend (demo)     | Streamlit                   |
+| Package manager     | uv                          |
+| Validation          | Pydantic 2                  |
+| Configuration       | pydantic-settings           |
+
 
 ---
 
-## License
-
-MIT
