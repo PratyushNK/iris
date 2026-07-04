@@ -104,8 +104,7 @@ The assignment required **one real engineering improvement**. Iris implements **
 iris/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py          # FastAPI server — 4 routes
-│   │   └── settings.py      # pydantic-settings (reads .env)
+│   │   └── main.py          # FastAPI server — 4 routes
 │   ├── agent/
 │   │   ├── graph.py         # LangGraph StateGraph — nodes + edges
 │   │   ├── factory.py       # IrisAgent class — run() and run_streamed()
@@ -269,7 +268,6 @@ for t in resp['tasks']:
 | Frontend (demo)     | Streamlit                   |
 | Package manager     | uv                          |
 | Validation          | Pydantic 2                  |
-| Configuration       | pydantic-settings           |
 
 
 ---
