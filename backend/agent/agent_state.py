@@ -13,10 +13,8 @@ class DocumentSection(BaseModel):
 
 
 class TodoStatus(str, Enum):
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
     PENDING = "pending"
-    BLOCKED = "blocked"
+    COMPLETED = "completed"
 
 
 class Todo(BaseModel):

@@ -112,7 +112,7 @@ def _infer_tone(prompt: str) -> str:
     return "professional and action-oriented"
 
 
-def _derive_title(prompt: str, document_type: str) -> str:
+def _derive_title(prompt: str) -> str:
     cleaned_prompt = _normalize_request(prompt)
     words = cleaned_prompt.split()
     if len(words) <= 12:
@@ -123,7 +123,7 @@ def _derive_title(prompt: str, document_type: str) -> str:
     return headline[:1].upper() + headline[1:]
 
 
-def _section_tasks(prompt: str, document_type: str) -> list[str]:
+def _section_tasks(prompt: str) -> list[str]:
     lowered = prompt.lower()
     tasks = [
         "Executive Summary: Write an executive summary that states the purpose, key outcomes, and recommended next steps.",
@@ -186,7 +186,7 @@ def _mock_section_content(prompt: str, section_heading: str, task: str) -> Secti
 
 def _build_plan(prompt: str) -> PlanSpec:
     document_type = _infer_document_type(prompt)
-    title = _derive_title(prompt, document_type)
+    title = _derive_title(prompt)
     audience = _infer_audience(prompt)
     tone = _infer_tone(prompt)
     assumptions = [
@@ -197,7 +197,7 @@ def _build_plan(prompt: str) -> PlanSpec:
     if any(keyword in prompt.lower() for keyword in ("ambiguous", "missing", "conflicting")):
         assumptions.append("Conflicting or missing constraints are resolved using practical business defaults.")
 
-    tasks = _section_tasks(prompt, document_type)
+    tasks = _section_tasks(prompt)
 
     return PlanSpec(
         title=title,
@@ -236,7 +236,7 @@ def _mock_reflection(prompt: str) -> ReflectionSpec:
 
 def _build_response(prompt: str, title: str = "", document_type: str = "business report") -> ResponseSpec:
     request = _normalize_request(prompt)
-    headline = title or _derive_title(prompt, document_type)
+    headline = title or _derive_title(prompt)
     return ResponseSpec(
         message=(
             f"I prepared '{headline}', a {document_type} based on your request. "

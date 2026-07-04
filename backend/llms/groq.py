@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Literal, Type, TypeVar
+from typing import Type, TypeVar
 
 from llms.llm import LLM, LLMConfig
 from pydantic import BaseModel
@@ -8,13 +8,6 @@ from groq import AsyncGroq
 
 
 T = TypeVar("T", bound=BaseModel)
-
-groq_models = Literal[
-    "llama-3.1-8b-instant",
-    "openai/gpt-oss-20b",
-    "llama-3.3-70b-versatile",
-    "openai/gpt-oss-120b",
-]
 
 class GroqLLM(LLM):
 
