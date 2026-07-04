@@ -38,26 +38,51 @@ def _build_reflection_prompt(state: AgentState) -> str:
     )
 
 
+def _looks_like_heading(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if len(stripped) > 100:
+        return False
+    if stripped.endswith((".", ":", "?", "!", ",", ";", "-", "—")):
+        return False
+    if stripped.startswith("- "):
+        return False
+    return True
+
+
+def _split_section_text(text: str) -> list[list[str]]:
+    lines = text.strip().split("\n")
+    if not lines:
+        return []
+    blocks: list[list[str]] = [[lines[0]]]
+    for line in lines[1:]:
+        prev_is_blank = blocks[-1][-1].strip() == ""
+        if prev_is_blank and _looks_like_heading(line):
+            blocks.append([line])
+        else:
+            blocks[-1].append(line)
+    return blocks
+
+
 def _to_document_sections(sections: list[str]) -> list[DocumentSection]:
     result = []
     for section_str in sections:
-        lines = section_str.strip().split("\n")
-        if not lines:
-            continue
-        heading = lines[0].strip()
-        if not heading:
-            continue
-        paragraphs = []
-        bullets = []
-        for line in lines[1:]:
-            line = line.strip()
-            if not line:
+        for block_lines in _split_section_text(section_str):
+            heading = block_lines[0].strip()
+            if not heading:
                 continue
-            if line.startswith("- "):
-                bullets.append(line[2:])
-            else:
-                paragraphs.append(line)
-        result.append(DocumentSection(heading=heading, paragraphs=paragraphs, bullets=bullets))
+            paragraphs = []
+            bullets = []
+            for line in block_lines[1:]:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("- "):
+                    bullets.append(line[2:])
+                else:
+                    paragraphs.append(line)
+            result.append(DocumentSection(heading=heading, paragraphs=paragraphs, bullets=bullets))
     return result
 
 

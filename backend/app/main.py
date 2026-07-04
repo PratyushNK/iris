@@ -4,7 +4,7 @@ import base64
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from agent.factory import IrisAgent, get_iris_agent
 from schemas.request import UserRequest
@@ -33,6 +33,22 @@ async def user_request(
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.post("/agent/stream")
+async def user_request_stream(
+    user_request: UserRequest,
+    agent: IrisAgent = Depends(get_iris_agent),
+):
+    return StreamingResponse(
+        agent.run_streamed(user_request.request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/documents/save", response_model=DocxSaveResponse)
