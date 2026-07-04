@@ -22,6 +22,7 @@ class TodoStatus(str, Enum):
 class Todo(BaseModel):
     id: int
     task: str
+    section_heading: str
     status: TodoStatus
     result: str | None = None
 
@@ -41,4 +42,7 @@ class IrisAgentState(TypedDict, total=False):
     docx_file_b64: str | None
     docx_filename: str | None
     final_response: str
+    execution_notes: list[str]
+    reflection_assessment: str
+    reflection_notes: list[str]
 

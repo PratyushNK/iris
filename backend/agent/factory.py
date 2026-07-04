@@ -46,7 +46,7 @@ class IrisAgent:
         response_tasks = [
             TodoResponse(
                 id=task.id,
-                task=task.task,
+                task=f"{task.section_heading}: {task.task}",
                 status=task.status.value,
                 result=task.result,
             )
@@ -61,11 +61,15 @@ class IrisAgent:
             tasks=response_tasks,
             docx_filename=result.get("docx_filename") or "iris_deliverable.docx",
             docx_base64=result.get("docx_file_b64") or "",
-            execution_notes=[
-                f"Planned {len(tasks)} task(s)",
-                "Executed the planning loop before document generation",
-                "Rendered a DOCX document in memory",
+            execution_notes=result.get("execution_notes")
+            or [
+                f"Planned {len(tasks)} section task(s)",
+                "Generated section content through worker agents",
+                # "Reviewed and revised the draft through reflection self-check",
+                "Assembled markdown and exported a DOCX document",
             ],
+            # reflection_assessment=result.get("reflection_assessment", ""),
+            # reflection_notes=result.get("reflection_notes", []),
         )
 def get_iris_agent() -> IrisAgent:
     return IrisAgent()

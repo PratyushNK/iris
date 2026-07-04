@@ -74,6 +74,14 @@ with left:
         st.markdown("#### Execution notes")
         for note in agent_response.get("execution_notes", []):
             st.write(f"- {note}")
+
+        # reflection_notes = agent_response.get("reflection_notes", [])
+        # if reflection_notes or agent_response.get("reflection_assessment"):
+        #     st.markdown("#### Reviewer reflection")
+        #     if agent_response.get("reflection_assessment"):
+        #         st.write(agent_response["reflection_assessment"])
+        #     for note in reflection_notes:
+        #         st.write(f"- {note}")
     else:
         st.info("Run the agent to see the generated response summary.")
 

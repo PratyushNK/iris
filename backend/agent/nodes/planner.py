@@ -16,14 +16,27 @@ async def planner(state: AgentState):
         PlanSpec,
         prompt=user_query,
         system_prompt=(
-            "You are a planning agent that decomposes natural-language business requests into a small, "
-            "actionable TODO list and a document brief."
+            "You are a planning agent that decomposes natural-language business document requests "
+            "into a document brief and a TODO list.\n\n"
+            "Rules:\n"
+            "- Each TODO item must produce ONE section of the final document.\n"
+            "- Every task needs a clear section_heading (the heading that will appear in the DOCX).\n"
+            "- The task field must describe the specific content to generate for that section.\n"
+            "- Choose 3-6 sections if unspecified. Else follow from the user's request, appropriate to the requested document type.\n"
+            "- Do NOT create meta tasks about planning, outlining, polishing, or exporting.\n"
+            "- Resolve missing details with explicit assumptions in the assumptions list."
         ),
         llm_config=LLMConfig(model="llama-3.1-8b-instant", temperature=0.2, max_tokens=1200, max_retries=2),
     )
 
     tasks = [
-        Todo(id=index + 1, task=item.task, status=TodoStatus.PENDING, result=None)
+        Todo(
+            id=index + 1,
+            task=item.task,
+            section_heading=item.section_heading,
+            status=TodoStatus.PENDING,
+            result=None,
+        )
         for index, item in enumerate(plan.tasks)
     ]
 
@@ -34,4 +47,5 @@ async def planner(state: AgentState):
         "tone": plan.tone,
         "assumptions": plan.assumptions,
         "tasks": tasks,
+        "docx_sections": [],
     }

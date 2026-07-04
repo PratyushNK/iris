@@ -1,17 +1,16 @@
-from agent.agent_state import (
-    DocumentSection,
-    IrisAgentState as AgentState,
-    TodoStatus,
-)
+from agent.agent_state import DocumentSection, IrisAgentState as AgentState
 
 
-def _completed_task_lines(state: AgentState) -> list[str]:
-    tasks = state.get("tasks", [])
-    return [
-        f"Task {task.id}: {task.result or task.task}"
-        for task in tasks
-        if task.status == TodoStatus.COMPLETED
-    ]
+def _section_to_markdown(section: DocumentSection) -> str:
+    lines = [f"## {section.heading}", ""]
+    for paragraph in section.paragraphs:
+        lines.append(paragraph)
+        lines.append("")
+    for bullet in section.bullets:
+        lines.append(f"- {bullet}")
+    if section.bullets:
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 # --- Docx Content Generator Node ---
@@ -21,41 +20,29 @@ def docx_content_generator(state: AgentState):
     audience = state.get("audience", "internal stakeholders")
     tone = state.get("tone", "professional and action-oriented")
     assumptions = state.get("assumptions", [])
-    tasks = state.get("tasks", [])
+    sections = list(state.get("docx_sections", []))
 
-    completed_lines = _completed_task_lines(state)
-    planned_lines = [f"{task.id}. {task.task}" for task in tasks]
-
-    sections = [
-        DocumentSection(
-            heading="Executive Summary",
-            paragraphs=[
-                (
-                    f"This {document_type} was produced autonomously from the user request and tailored for {audience}. "
-                    f"The document uses a {tone} style and resolves missing details with explicit assumptions."
-                )
-            ],
-        ),
-        DocumentSection(heading="Autonomous Plan", bullets=planned_lines),
-        DocumentSection(heading="Completed Work", bullets=completed_lines),
-    ]
-
-    if assumptions:
-        sections.append(DocumentSection(heading="Assumptions", bullets=assumptions))
-
-    docx_content = (
-        f"# {title}\n\n"
-        f"Document type: {document_type}\n"
-        f"Audience: {audience}\n"
-        f"Tone: {tone}\n\n"
-        f"## Planned Tasks\n"
-        + "\n".join(f"- {line}" for line in planned_lines)
-        + (
-            "\n\n## Completed Work\n" + "\n".join(f"- {line}" for line in completed_lines)
-            if completed_lines
-            else ""
+    if assumptions and not any(section.heading.lower() == "assumptions" for section in sections):
+        sections.append(
+            DocumentSection(
+                heading="Assumptions",
+                bullets=assumptions,
+            )
         )
-    )
+
+    markdown_parts = [
+        f"# {title}",
+        "",
+        f"Document type: {document_type}",
+        f"Audience: {audience}",
+        f"Tone: {tone}",
+        "",
+    ]
+    for section in sections:
+        markdown_parts.append(_section_to_markdown(section))
+        markdown_parts.append("")
+
+    docx_content = "\n".join(markdown_parts).strip()
 
     return {
         "docx_content": docx_content,

@@ -7,7 +7,14 @@ from pydantic import BaseModel, Field
 
 class PlannedTask(BaseModel):
     task: str
+    section_heading: str
     rationale: str | None = None
+
+
+class SectionContentSpec(BaseModel):
+    heading: str
+    paragraphs: list[str] = Field(default_factory=list)
+    bullets: list[str] = Field(default_factory=list)
 
 
 class PlanSpec(BaseModel):
@@ -22,6 +29,12 @@ class PlanSpec(BaseModel):
 class ResponseSpec(BaseModel):
     message: str
     execution_notes: list[str] = Field(default_factory=list)
+
+
+class ReflectionSpec(BaseModel):
+    overall_assessment: str
+    reflection_notes: list[str] = Field(default_factory=list)
+    sections: list[SectionContentSpec] = Field(default_factory=list)
 
 
 class LLMConfig(BaseModel):
@@ -114,25 +127,107 @@ def _derive_title(prompt: str, document_type: str) -> str:
     return headline[:1].upper() + headline[1:]
 
 
-def _base_tasks(prompt: str) -> list[str]:
+def _section_tasks(prompt: str, document_type: str) -> list[PlannedTask]:
     lowered = prompt.lower()
     tasks = [
-        "Interpret the request and lock the deliverable scope",
-        "Build a structured outline and set reasonable assumptions",
-        "Draft the business content with clear sections and recommendations",
-        "Polish the final document and prepare the handoff summary",
+        PlannedTask(
+            task="Write an executive summary that states the purpose, key outcomes, and recommended next steps.",
+            section_heading="Executive Summary",
+        ),
+        PlannedTask(
+            task="Describe the background, objectives, and scope of the deliverable based on the user request.",
+            section_heading="Background and Objectives",
+        ),
+        PlannedTask(
+            task="Provide the main body content with structured recommendations, requirements, or plan details.",
+            section_heading="Main Content",
+        ),
+        PlannedTask(
+            task="Summarize conclusions, ownership, and immediate follow-up actions.",
+            section_heading="Conclusion and Next Steps",
+        ),
     ]
 
-    if any(keyword in lowered for keyword in ("ambiguous", "missing", "conflicting", "decide", "multi-step")):
-        tasks.insert(1, "Resolve missing details by making explicit working assumptions")
+    if any(keyword in lowered for keyword in ("meeting", "minutes")):
+        tasks = [
+            PlannedTask(
+                task="Capture meeting purpose, date context, attendees, and facilitator.",
+                section_heading="Meeting Details",
+            ),
+            PlannedTask(
+                task="Summarize the key discussion points and decisions made.",
+                section_heading="Discussion Summary",
+            ),
+            PlannedTask(
+                task="List action items with owners and due dates.",
+                section_heading="Action Items",
+            ),
+        ]
+    elif any(keyword in lowered for keyword in ("timeline", "schedule", "launch", "implementation", "plan", "roadmap")):
+        tasks.insert(
+            2,
+            PlannedTask(
+                task="Lay out phases, milestones, and a realistic timeline with dependencies.",
+                section_heading="Timeline and Milestones",
+            ),
+        )
+    elif any(keyword in lowered for keyword in ("sop", "standard operating procedure", "procedure")):
+        tasks = [
+            PlannedTask(
+                task="State the procedure purpose, scope, and responsible roles.",
+                section_heading="Purpose and Scope",
+            ),
+            PlannedTask(
+                task="Document prerequisites, inputs, and required tools or systems.",
+                section_heading="Prerequisites",
+            ),
+            PlannedTask(
+                task="Provide numbered step-by-step instructions for execution.",
+                section_heading="Procedure Steps",
+            ),
+            PlannedTask(
+                task="List quality checks, exceptions, and escalation paths.",
+                section_heading="Quality and Escalation",
+            ),
+        ]
 
-    if any(keyword in lowered for keyword in ("compare", "evaluate", "recommend", "choose")):
-        tasks.append("Add decision criteria, tradeoffs, and a recommendation")
+    if any(keyword in lowered for keyword in ("compare", "evaluate", "recommend", "choose", "tradeoff")):
+        tasks.append(
+            PlannedTask(
+                task="Compare options, explain tradeoffs, and provide a clear recommendation.",
+                section_heading="Analysis and Recommendation",
+            )
+        )
 
-    if any(keyword in lowered for keyword in ("timeline", "schedule", "launch", "implementation")):
-        tasks.append("Add a realistic timeline and execution risks")
+    if any(keyword in lowered for keyword in ("timeline", "schedule", "launch", "implementation", "risk")):
+        if not any(task.section_heading == "Timeline and Milestones" for task in tasks):
+            tasks.append(
+                PlannedTask(
+                    task="Identify execution risks, mitigations, and open dependencies.",
+                    section_heading="Risks and Mitigations",
+                )
+            )
 
     return tasks
+
+
+def _mock_section_content(prompt: str, section_heading: str, task: str) -> SectionContentSpec:
+    request = _normalize_request(prompt)
+    return SectionContentSpec(
+        heading=section_heading,
+        paragraphs=[
+            (
+                f"This section covers {section_heading.lower()} for the requested { _infer_document_type(prompt) } "
+                f"derived from: {request}."
+            ),
+            f"Task focus: {task}",
+        ],
+        bullets=[
+            "Key point aligned to the user request",
+            "Practical recommendation or requirement",
+            "Clear next step for stakeholders",
+        ],
+    )
 
 
 def _build_plan(prompt: str) -> PlanSpec:
@@ -148,7 +243,7 @@ def _build_plan(prompt: str) -> PlanSpec:
     if any(keyword in prompt.lower() for keyword in ("ambiguous", "missing", "conflicting")):
         assumptions.append("Conflicting or missing constraints are resolved using practical business defaults.")
 
-    tasks = [PlannedTask(task=task) for task in _base_tasks(prompt)]
+    tasks = _section_tasks(prompt, document_type)
 
     return PlanSpec(
         title=title,
@@ -160,14 +255,54 @@ def _build_plan(prompt: str) -> PlanSpec:
     )
 
 
-def _build_response(prompt: str) -> ResponseSpec:
+def _mock_reflection(prompt: str) -> ReflectionSpec:
+    sections: list[SectionContentSpec] = []
+    notes: list[str] = []
+    for line in prompt.splitlines():
+        if line.startswith("Section: "):
+            heading = line.split(":", 1)[1].strip()
+            sections.append(
+                SectionContentSpec(
+                    heading=heading,
+                    paragraphs=[f"Revised content for {heading} after self-check review."],
+                    bullets=["Clarified scope and actionable next steps"],
+                )
+            )
+    if not sections:
+        sections.append(
+            SectionContentSpec(
+                heading="Document Content",
+                paragraphs=["Revised content after self-check review."],
+                bullets=["Improved clarity and alignment to the user request"],
+            )
+        )
+    notes = [
+        "Verified each section addresses the original user request.",
+        "Expanded thin sections with concrete recommendations.",
+        "Aligned tone and terminology across sections.",
+    ]
+    return ReflectionSpec(
+        overall_assessment="Document reviewed and revised for completeness, clarity, and request alignment.",
+        reflection_notes=notes,
+        sections=sections,
+    )
+
+
+def _build_response(prompt: str, title: str = "", document_type: str = "business report") -> ResponseSpec:
     request = _normalize_request(prompt)
+    headline = title or _derive_title(prompt, document_type)
     return ResponseSpec(
-        message=f"The agent completed the requested deliverable for: {request}",
+        message=(
+            f"I prepared '{headline}', a {document_type} based on your request. "
+            f"The Word document includes structured sections covering the requested scope, "
+            f"with explicit assumptions where details were missing. "
+            f"You can download the DOCX for review and handoff."
+        ),
         execution_notes=[
-            "Autonomous planning completed",
-            "Task execution trace assembled",
-            "DOCX document generated in memory",
+            "Decomposed the request into document section tasks",
+            "Generated section content through worker agents",
+            "Reviewed and revised the draft through reflection self-check",
+            "Assembled markdown and exported a DOCX deliverable",
         ],
     )
 
@@ -191,6 +326,21 @@ class MockLLM:
     ) -> T:
         if issubclass(schema, PlanSpec):
             return schema.model_validate(_build_plan(prompt).model_dump())
+
+        if issubclass(schema, SectionContentSpec):
+            section_heading = "Section"
+            task_text = "Generate section content"
+            for line in prompt.splitlines():
+                if line.startswith("Section heading:"):
+                    section_heading = line.split(":", 1)[1].strip()
+                if line.startswith("Section task:"):
+                    task_text = line.split(":", 1)[1].strip()
+            return schema.model_validate(
+                _mock_section_content(prompt, section_heading, task_text).model_dump()
+            )
+
+        if issubclass(schema, ReflectionSpec):
+            return schema.model_validate(_mock_reflection(prompt).model_dump())
 
         if issubclass(schema, ResponseSpec):
             return schema.model_validate(_build_response(prompt).model_dump())

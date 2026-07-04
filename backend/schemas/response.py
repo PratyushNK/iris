@@ -17,6 +17,8 @@ class AgentResponse(BaseModel):
     docx_filename: str
     docx_base64: str
     execution_notes: list[str] = Field(default_factory=list)
+    # reflection_assessment: str = ""
+    # reflection_notes: list[str] = Field(default_factory=list)
 
 
 class DocxSaveRequest(BaseModel):
