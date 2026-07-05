@@ -30,60 +30,29 @@ def _build_reflection_prompt(state: AgentState) -> str:
         "Draft sections to review:\n"
         f"{_format_sections_for_review(sections)}\n\n"
         "Review the draft against the user request and document brief. "
-        "Rewrite each section's FULL content with improvements — stronger prose, clearer structure, better examples. "
-        "Keep every substantive paragraph and bullet from the original; only add, rephrase, or reorganize. "
+        "Rewrite each section — tighten prose, remove redundancy, keep it brief. "
+        "Keep every substantive point from the original; only add, rephrase, or reorganize. "
         "Do NOT summarize, truncate, or replace content with review notes. "
         "Each section string must contain the complete revised content, not a description of changes. "
-        "Do not mention the agent, TODO list, or review process inside section content."
+        "Do not mention the agent, TODO list, or review process inside section content. "
+        "Aim for 2-4 sentences or 2-4 bullet points per section."
     )
 
 
-def _looks_like_heading(line: str) -> bool:
-    stripped = line.strip()
-    if not stripped:
-        return False
-    if len(stripped) > 100:
-        return False
-    if stripped.endswith((".", ":", "?", "!", ",", ";", "-", "—")):
-        return False
-    if stripped.startswith("- "):
-        return False
-    return True
-
-
-def _split_section_text(text: str) -> list[list[str]]:
+def _parse_section_string(text: str) -> DocumentSection:
     lines = text.strip().split("\n")
-    if not lines:
-        return []
-    blocks: list[list[str]] = [[lines[0]]]
+    heading = lines[0].strip() if lines else "Untitled Section"
+    paragraphs: list[str] = []
+    bullets: list[str] = []
     for line in lines[1:]:
-        prev_is_blank = blocks[-1][-1].strip() == ""
-        if prev_is_blank and _looks_like_heading(line):
-            blocks.append([line])
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("- "):
+            bullets.append(line[2:])
         else:
-            blocks[-1].append(line)
-    return blocks
-
-
-def _to_document_sections(sections: list[str]) -> list[DocumentSection]:
-    result = []
-    for section_str in sections:
-        for block_lines in _split_section_text(section_str):
-            heading = block_lines[0].strip()
-            if not heading:
-                continue
-            paragraphs = []
-            bullets = []
-            for line in block_lines[1:]:
-                line = line.strip()
-                if not line:
-                    continue
-                if line.startswith("- "):
-                    bullets.append(line[2:])
-                else:
-                    paragraphs.append(line)
-            result.append(DocumentSection(heading=heading, paragraphs=paragraphs, bullets=bullets))
-    return result
+            paragraphs.append(line)
+    return DocumentSection(heading=heading, paragraphs=paragraphs, bullets=bullets)
 
 
 async def reflection(state: AgentState):
@@ -103,32 +72,33 @@ async def reflection(state: AgentState):
         ReflectionSpec,
         prompt=_build_reflection_prompt(state),
         system_prompt=(
-            "You are a reviewer agent performing reflection and self-check on a business document draft. "
-            "Rewrite every section with improvements — keep all original content, strengthen weak parts, "
-            "add missing detail, and tighten the prose.\n\n"
+            "You are a reviewer agent performing reflection and self-check on a concise business document draft. "
+            "Improve each section while preserving its brevity — keep all original content, tighten prose, "
+            "remove redundancy. The final document must fit 1.5–2 pages total.\n\n"
             "CRITICAL: Each section string must contain the FULL rewritten content. "
             "Do NOT return review notes, summaries, or placeholders. "
             "Format: heading on the first line, then paragraphs and bullet points "
             "(starting with '- ') on following lines."
         ),
-        llm_config=LLMConfig(model="llama-3.1-8b-instant", temperature=0.3, max_tokens=2500, max_retries=3),
+        llm_config=LLMConfig(model="llama-3.1-8b-instant", temperature=0.3, max_tokens=2048, max_retries=3),
     )
 
-    revised_sections = _to_document_sections(review.sections)
+    revised_sections = [_parse_section_string(s) for s in review.sections if s.strip()]
+
     if not revised_sections:
         revised_sections = draft_sections
         reflection_notes = list(review.reflection_notes) + [
             "Reviewer returned no revised sections; kept the worker draft unchanged.",
         ]
     else:
-        originals_by_heading = {s.heading.lower(): s for s in draft_sections}
-        merged = []
+        covered: set[str] = set()
+        merged: list[DocumentSection] = []
         for revised in revised_sections:
-            original = originals_by_heading.get(revised.heading.lower())
-            if original and (len(revised.paragraphs) + len(revised.bullets)) < (len(original.paragraphs) + len(original.bullets)):
-                merged.append(original)
-            else:
-                merged.append(revised)
+            merged.append(revised)
+            covered.add(revised.heading.lower())
+        for draft in draft_sections:
+            if draft.heading.lower() not in covered:
+                merged.append(draft)
         revised_sections = merged
         reflection_notes = review.reflection_notes
 

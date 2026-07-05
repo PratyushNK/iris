@@ -16,8 +16,9 @@ def _build_worker_prompt(state: AgentState, section_heading: str, task_text: str
         f"Assumptions: {'; '.join(assumptions) if assumptions else 'None'}\n"
         f"Section heading: {section_heading}\n"
         f"Section task: {task_text}\n\n"
-        "Generate substantive business content for this section only. "
-        "Use clear paragraphs and bullet lists where appropriate. "
+        "Generate concise business content for this section only. "
+        "Keep to the word budget implied in the section task. "
+        "Prefer 1–2 short paragraphs or 2–4 bullet points. "
         "Do not mention the agent, TODO list, or document generation process."
     )
 
@@ -38,13 +39,13 @@ async def todo_worker(state: AgentState):
         SectionContentSpec,
         prompt=_build_worker_prompt(state, active_task.section_heading, active_task.task),
         system_prompt=(
-            "You are a worker agent that drafts one section of a structured business document. "
-            "Return only the content for the requested section."
+            "You are a worker agent that drafts one section of a concise business document. "
+            "Return only the content for the requested section. Be brief — no fluff."
         ),
         llm_config=LLMConfig(
             model="llama-3.1-8b-instant",
             temperature=0.45,
-            max_tokens=1200,
+            max_tokens=400,
             max_retries=2,
         ),
     )
